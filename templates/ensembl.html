@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ensembl &middot; {{ gene }}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 30px; background: #f8f9fa; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 15px 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .header a { color: #4B2C7F; text-decoration: none; font-weight: bold; margin-left: 18px; }
+        .panel { background: #fff; padding: 18px 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 18px; border-left: 5px solid #4B2C7F; }
+        .panel h3 { margin: 0 0 12px 0; color: #4B2C7F; }
+        label { font-size: 14px; }
+        select, input[type="text"] { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; background: #fff; }
+        .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 10px; }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field span { font-size: 12px; color: #666; }
+        button { padding: 11px 22px; font-size: 15px; background: #4B2C7F; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #3b2263; }
+        button.green { background: #27ae60; } button.green:hover { background: #219150; }
+        button.small { padding: 6px 12px; font-size: 13px; }
+        .radio-line { display: block; margin: 6px 0; font-size: 15px; }
+        .muted { color: #7f8c8d; font-size: 13px; }
+        .err { color: #c0392b; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 13px; vertical-align: top; }
+        th { background: #f4f4f4; }
+        tr.old td:first-child { background: #fdeedb; font-weight: bold; }
+        tr.new td:first-child { background: #e3effb; font-weight: bold; }
+        .note { background: #fff4e5; border-left: 4px solid #e67e22; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+        a.fr { display: inline-block; padding: 5px 10px; border: 2px solid #4B2C7F; color: #4B2C7F; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; margin-top: 4px; }
+        details { margin-top: 8px; font-size: 13px; }
+        .kv td:first-child { width: 190px; background: #f4f4f4; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2 style="margin:0; color:#4B2C7F;">🧬 Ensembl &middot; <span id="geneTitle">{{ gene }}</span></h2>
+        <div><a href="/">Gene overview</a><a href="/classic">Classic tools</a></div>
+    </div>
+
+    <div class="panel">
+        <h3>1 &middot; Ensembl site</h3>
+        <label class="radio-line"><input type="radio" name="asm" value="GRCh37"> <strong>Old Ensembl</strong> &ndash; GRCh37 (grch37.ensembl.org)</label>
+        <label class="radio-line"><input type="radio" name="asm" value="GRCh38" checked> <strong>Current Ensembl</strong> &ndash; GRCh38 (ensembl.org)</label>
+    </div>
+
+    <div class="panel">
+        <h3>2 &middot; Transcript</h3>
+        <div class="row">
+            <div class="field"><span>Ensembl ID</span><select id="enst" style="min-width:520px;"></select></div>
+            <div class="field"><span>RefSeq ID</span><select id="refseq" style="min-width:260px;"><option value="">loading...</option></select></div>
+        </div>
+        <div id="txInfo" class="muted"></div>
+        <div style="margin-top:10px;"><button class="green" onclick="openView(null)">Open cDNA / CDS / protein and exon / intron sequences &nbsp;↗</button>
+        <span class="muted">&nbsp;opens in a new tab</span></div>
+    </div>
+
+    <div class="panel">
+        <h3>3 &middot; Locate a position or change</h3>
+        <div class="row">
+            <div class="field" style="flex:1; min-width:300px;"><span>Quick entry (optional): c.4375C&gt;T &nbsp; c.4375_4378del &nbsp; c.4375_4376insAG &nbsp; c.4375dup &nbsp; c.4375_4377delinsAG &nbsp; exons 45-50 del</span>
+                <input type="text" id="hgvs" placeholder="type a change here, or fill in the boxes below"></div>
+        </div>
+        <div class="row">
+            <div class="field"><span>Change type</span>
+                <select id="vtype" onchange="setupFields()">
+                    <option value="sub">Substitution (e.g. C&gt;T)</option>
+                    <option value="del">Deletion</option>
+                    <option value="ins">Insertion</option>
+                    <option value="dup">Duplication</option>
+                    <option value="delins">Deletion + insertion (delins)</option>
+                    <option value="exondel">Whole-exon deletion</option>
+                </select></div>
+            <div class="field" id="wCoord"><span>Position type</span>
+                <select id="coord"><option value="c">c. coding position</option><option value="n">n. transcript (cDNA) position</option><option value="g">g. genomic position</option></select></div>
+            <div class="field"><span id="lPos">Position</span><input type="text" id="pos" style="width:150px;" placeholder="e.g. 4375 or 4375+5"></div>
+            <div class="field" id="wPos2"><span id="lPos2">End position</span><input type="text" id="pos2" style="width:130px;"></div>
+            <div class="field" id="wRef"><span id="lRef">Ref</span><input type="text" id="ref" style="width:110px; text-transform:uppercase;"></div>
+            <div class="field" id="wAlt"><span id="lAlt">Alt</span><input type="text" id="alt" style="width:110px; text-transform:uppercase;"></div>
+            <button onclick="locate()">Locate</button>
+        </div>
+        <div class="muted">The same transcript is looked up on the old (GRCh37) and the current (GRCh38) Ensembl site and shown side by side.
+            Positions are in the transcript's own orientation (c. / n.). For g. positions, give the nucleotides on the forward strand.</div>
+    </div>
+
+    <div id="result"></div>
+</div>
+
+{% include '_seqview.html' %}
+<script>
+const GENE = {{ gene|tojson }};
+let ASM = 'GRCh38';
+let TRS = [];
+let RS = {};            // Ensembl transcript -> RefSeq IDs
+let ROWS = {};          // last comparison rows by assembly
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+
+// ---------- site ----------
+document.querySelectorAll('input[name=asm]').forEach(r => r.addEventListener('change', () => { ASM = r.value; if (r.checked) loadTranscripts(); }));
+
+// ---------- transcripts + RefSeq ----------
+async function loadTranscripts() {
+    const sel = $('enst');
+    sel.innerHTML = '<option>loading...</option>';
+    $('refseq').innerHTML = '<option value="">loading...</option>';
+    $('txInfo').textContent = '';
+    RS = {};
+    try {
+        const r = await fetch(`/api/gene/transcripts?gene=${enc(GENE)}&assembly=${ASM}`);
+        const d = await r.json();
+        if (d.error) { sel.innerHTML = '<option value="">none</option>'; $('txInfo').innerHTML = `<span class="err">⚠️ ${esc(d.error)}</span>`; return; }
+        TRS = d.transcripts;
+        sel.innerHTML = TRS.map(t => `<option value="${esc(t.transcript_id)}">${esc(optionText(t))}</option>`).join('');
+        refreshRefseq(); updateInfo();
+        loadRefseqs();
+    } catch (e) { sel.innerHTML = '<option value="">none</option>'; $('txInfo').innerHTML = '<span class="err">⚠️ Could not load the transcripts.</span>'; }
+}
+
+function optionText(t) {
+    const rs = (RS[t.transcript_id] || [])[0];
+    return [`${t.transcript_id}.${t.version}`, t.name || '', t.biotype, t.protein_length ? t.protein_length + ' aa' : '', `${t.exon_count} exons`,
+            rs || '', t.is_canonical ? 'canonical' : ''].filter(Boolean).join('  |  ');
+}
+
+async function loadRefseqs() {
+    const asm = ASM, ids = TRS.map(t => t.transcript_id);
+    for (let i = 0; i < ids.length; i += 8) {
+        if (asm !== ASM) return;                           // the site was changed meanwhile
+        const chunk = ids.slice(i, i + 8);
+        try {
+            const r = await fetch(`/api/refseq-batch?ids=${enc(chunk.join(','))}&assembly=${asm}`);
+            const d = await r.json();
+            chunk.forEach(id => { RS[id] = d[id] || []; });
+        } catch (e) { chunk.forEach(id => { RS[id] = RS[id] || []; }); }
+        if (asm !== ASM) return;
+        const keep = $('enst').value;
+        $('enst').innerHTML = TRS.map(t => `<option value="${esc(t.transcript_id)}">${esc(optionText(t))}</option>`).join('');
+        $('enst').value = keep;
+        refreshRefseq(); updateInfo();
+    }
+}
+
+function refreshRefseq() {
+    const cur = $('enst').value, sel = $('refseq'), keep = sel.value;
+    let opts = '<option value="">&mdash; none &mdash;</option>';
+    TRS.forEach(t => (RS[t.transcript_id] || []).forEach(acc => {
+        opts += `<option value="${esc(acc)}" data-tx="${esc(t.transcript_id)}">${esc(acc)}  |  ${esc(t.transcript_id)}</option>`;
+    }));
+    sel.innerHTML = opts;
+    const mine = (RS[cur] || [])[0];
+    sel.value = [...sel.options].some(o => o.value === keep && o.dataset.tx === cur) ? keep : (mine || '');
+}
+
+$('enst').addEventListener('change', () => { refreshRefseq(); updateInfo(); });
+$('refseq').addEventListener('change', () => {
+    const o = $('refseq').selectedOptions[0];
+    if (o && o.dataset.tx) { $('enst').value = o.dataset.tx; updateInfo(); }
+});
+
+function selectedTx() { return TRS.find(t => t.transcript_id === $('enst').value); }
+
+function updateInfo() {
+    const t = selectedTx();
+    if (!t) { $('txInfo').textContent = ''; return; }
+    const rs = (RS[t.transcript_id] || []).join(', ') || (Object.keys(RS).length ? 'none linked' : 'loading...');
+    $('txInfo').innerHTML = `<strong>${esc(t.transcript_id)}.${esc(t.version)}</strong> &middot; ${esc(t.name || '')} &middot; ${esc(t.biotype)} &middot; ${t.length.toLocaleString()} bp
+        &middot; <strong>${t.exon_count} exons, ${t.intron_count} introns</strong>${t.protein_length ? ' &middot; ' + t.protein_length + ' aa (' + esc(t.protein_id) + ')' : ''}
+        &middot; RefSeq: <strong>${esc(rs)}</strong>${t.is_canonical ? ' &middot; <strong>canonical</strong>' : ''}`;
+}
+
+// ---------- locate form ----------
+function setupFields() {
+    const v = $('vtype').value;
+    const show = (id, on) => { $(id).style.display = on ? '' : 'none'; };
+    show('wCoord', v !== 'exondel');
+    show('wPos2', v !== 'sub');
+    show('wRef', v !== 'ins' && v !== 'exondel');
+    show('wAlt', v === 'sub' || v === 'ins' || v === 'delins');
+    $('lPos').textContent = v === 'exondel' ? 'First exon' : (v === 'sub' ? 'Position' : (v === 'ins' ? 'Position (insert after)' : 'Start position'));
+    $('lPos2').textContent = v === 'exondel' ? 'Last exon' : (v === 'ins' ? 'Next position (optional)' : 'End position (blank = one base)');
+    $('lRef').textContent = v === 'sub' ? 'Ref (1 base, optional)' : 'Deleted bases (optional)';
+    $('lAlt').textContent = v === 'sub' ? 'Alt (1 base)' : 'Inserted sequence';
+    $('ref').maxLength = v === 'sub' ? 1 : 200;
+    $('alt').maxLength = v === 'sub' ? 1 : 200;
+}
+
+function applyHgvs() {
+    const t = $('hgvs').value.trim().replace(/\s+/g, '');
+    if (!t) return true;
+    let m;
+    const set = (vt, coord, pos, pos2, ref, alt) => {
+        $('vtype').value = vt; setupFields();
+        if (coord) $('coord').value = coord;
+        $('pos').value = pos; $('pos2').value = pos2 || ''; $('ref').value = (ref || '').toUpperCase(); $('alt').value = (alt || '').toUpperCase();
+    };
+    if ((m = t.match(/^exons?(\d+)(?:[-_\u2013](\d+))?del$/i))) set('exondel', 'c', m[1], m[2] || m[1], '', '');
+    else if ((m = t.match(/^([cng])\.(.+?)([ACGT])>([ACGT])$/i))) set('sub', m[1].toLowerCase(), m[2], '', m[3], m[4]);
+    else if ((m = t.match(/^([cng])\.(.+?)delins([ACGT]+)$/i))) set('delins', m[1].toLowerCase(), m[2], '', '', m[3]);
+    else if ((m = t.match(/^([cng])\.(.+?)ins([ACGT]+)$/i))) set('ins', m[1].toLowerCase(), m[2], '', '', m[3]);
+    else if ((m = t.match(/^([cng])\.(.+?)dup([ACGT]*)$/i))) set('dup', m[1].toLowerCase(), m[2], '', m[3], '');
+    else if ((m = t.match(/^([cng])\.(.+?)del([ACGT]*)$/i))) set('del', m[1].toLowerCase(), m[2], '', m[3], '');
+    else { alert('The quick entry could not be read. Examples: c.4375C>T, c.4375_4378del, c.4375_4376insAG, c.4375dup, exons 45-50 del'); return false; }
+    return true;
+}
+
+function variantParams() {
+    const v = $('vtype').value;
+    return { coord: v === 'exondel' ? 'c' : $('coord').value, pos: $('pos').value.trim(), pos2: $('pos2').value.trim(), vtype: v,
+             ref: $('ref').value.trim().toUpperCase(), alt: $('alt').value.trim().toUpperCase() };
+}
+
+async function locate() {
+    if (!applyHgvs()) return;
+    const v = variantParams();
+    if (!v.pos) return alert('Please enter the position.');
+    const t = selectedTx();
+    const q = new URLSearchParams({ gene: GENE, transcript: t ? t.transcript_id : '', assembly: ASM, ...v });
+    $('result').innerHTML = '<div class="panel"><span class="muted">Looking the position up on the old and the current Ensembl site...</span></div>';
+    try {
+        const r = await fetch('/api/compare-locate?' + q.toString());
+        const d = await r.json();
+        if (d.error) { $('result').innerHTML = `<div class="panel"><span class="err">⚠️ ${esc(d.error)}</span></div>`; return; }
+        renderCompare(d);
+    } catch (e) { $('result').innerHTML = '<div class="panel"><span class="err">⚠️ The lookup could not be completed.</span></div>'; }
+}
+
+function renderCompare(d) {
+    ROWS = {};
+    let body = '', details = '';
+    d.rows.forEach(r => {
+        ROWS[r.assembly] = r;
+        const cls = r.assembly === 'GRCh37' ? 'old' : 'new';
+        if (r.skipped || r.error) {
+            body += `<tr class="${cls}"><td>${esc(r.label)}</td><td colspan="9" class="${r.error ? 'err' : 'muted'}">${esc(r.error || r.skipped)}</td></tr>`;
+            return;
+        }
+        const s = r.summary;
+        body += `<tr class="${cls}"><td>${esc(r.label)}</td>
+            <td><strong>${esc(r.ensembl_id)}</strong><br><span class="muted">${r.exons} exons</span></td>
+            <td>${esc(r.refseq)}${r.refseq_protein ? '<br><span class="muted">' + esc(r.refseq_protein) + '</span>' : ''}</td>
+            <td>${esc(s['Location'] || '')}</td><td>${esc(s['Position in exon'] || s['Position in intron'] || '')}</td>
+            <td>${esc(s['Genomic position'] || '\u2013')}</td><td>${esc(s['cDNA notation'] || '')}</td>
+            <td>${esc(s['Change'] || s['Variant'] || '')}</td><td>${esc(s['Consequence'] || '\u2013')}${s['Reading frame'] ? '<br><span class="muted">' + esc(s['Reading frame']) + '</span>' : ''}</td>
+            <td><button class="small" onclick="openView('${r.assembly}')">Open sequences ↗</button>
+                ${r.franklin_url ? `<br><a class="fr" href="${esc(r.franklin_url)}" target="_blank" rel="noopener">Check in Franklin ↗</a>` : ''}</td></tr>`;
+        details += `<details><summary><strong>${esc(r.label)}</strong> &ndash; full details</summary>
+            <table class="kv"><tbody>${r.location.map(x => `<tr><td>${esc(x[0])}</td><td style="word-break:break-all;">${esc(x[1])}</td></tr>`).join('')}</tbody></table>
+            ${(r.warnings || []).map(w => `<div class="note">⚠️ ${esc(w)}</div>`).join('')}</details>`;
+    });
+    $('result').innerHTML = `<div class="panel"><h3>Old and current Ensembl</h3>
+        <table><thead><tr><th>Site</th><th>Ensembl ID</th><th>RefSeq ID</th><th>Location</th><th>Position</th><th>Genomic position</th><th>cDNA notation</th><th>Change</th><th>Consequence</th><th></th></tr></thead>
+        <tbody>${body}</tbody></table>${details}
+        <div class="muted" style="margin-top:10px;">If the two sites show different Ensembl versions or different c. numbering, the transcript was revised between the old and the current release.
+        The Franklin link is filled in with the variant's genomic coordinates for that assembly (hg19 for the old site, hg38 for the current one).</div></div>`;
+    $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---------- open the sequence tab ----------
+function openView(asm) {
+    const useAsm = asm || ASM;
+    const row = asm ? ROWS[asm] : null;
+    const t = selectedTx();
+    const q = new URLSearchParams({ gene: GENE, assembly: useAsm,
+        transcript: row && row.transcript ? row.transcript : (t ? t.transcript_id : ''),
+        refseq: $('refseq').value });
+    if ($('hgvs').value.trim() || $('pos').value.trim()) {
+        if (!applyHgvs()) return;
+        const v = variantParams();
+        if (v.pos) Object.entries(v).forEach(([k, val]) => { if (val) q.set(k, val); });
+    }
+    window.open('/ensembl/view?' + q.toString(), '_blank');
+}
+
+setupFields();
+loadTranscripts();
+</script>
+</body>
+</html>

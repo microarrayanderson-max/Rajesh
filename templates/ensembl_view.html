@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sequences</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 20px; background: #f8f9fa; color: #333; }
+        .top { background: #fff; padding: 14px 22px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 14px; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; color: #fff; font-size: 12px; margin-left: 8px; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+        .pane { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 14px 18px; height: calc(100vh - 230px); min-height: 420px; overflow: auto; }
+        .pane h3 { margin: 0 0 6px 0; color: #4B2C7F; border-bottom: 2px solid #4B2C7F; padding-bottom: 6px; position: sticky; top: -14px; background: #fff; z-index: 2; padding-top: 14px; }
+        .pane h4 { margin: 14px 0 0 0; }
+        button { padding: 8px 16px; font-size: 13px; background: #27ae60; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 8px; }
+        button.word { background: #2980b9; }
+        a.fr { display: inline-block; padding: 5px 10px; border: 2px solid #4B2C7F; color: #4B2C7F; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+        td { border: 1px solid #ddd; padding: 6px 10px; font-size: 13px; vertical-align: top; word-break: break-all; }
+        td:first-child { width: 170px; background: #f4f4f4; font-weight: bold; word-break: normal; }
+        .note { background: #fff4e5; border-left: 4px solid #e67e22; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+        .err { color: #c0392b; font-weight: bold; }
+        .var { border-left: 5px solid #e74c3c; background: #fff; padding: 12px 18px; border-radius: 8px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+<div id="app"><div class="top muted">Loading the sequences... (large genes can take a little while)</div></div>
+
+{% include '_seqview.html' %}
+<script>
+const Q = new URLSearchParams(window.location.search);
+const SEQ = {};
+
+async function init() {
+    const app = document.getElementById('app');
+    try {
+        const r = await fetch('/api/view-data?' + Q.toString());
+        const d = await r.json();
+        if (d.error) { app.innerHTML = `<div class="top"><span class="err">⚠️ ${esc(d.error)}</span></div>`; return; }
+        render(d, app);
+    } catch (e) { app.innerHTML = '<div class="top"><span class="err">⚠️ The data could not be loaded.</span></div>'; }
+}
+
+function render(d, app) {
+    const v = d.view;
+    const ensId = v.transcript_id + (v.version ? '.' + v.version : '');
+    document.title = `${ensId} · ${v.gene_name || ''}`;
+    const rs = d.refseq;
+    const rsIds = rs ? rs.mrna.concat(rs.ncrna) : [];
+    const rsProt = rs ? rs.protein : [];
+    const mane = rs && rs.mane && rs.mane.length ? rs.mane.map(m => esc(m.type)).join(', ') : '';
+    const asmTxt = d.assembly === 'GRCh37' ? 'Old Ensembl (GRCh37)' : 'Current Ensembl (GRCh38)';
+    const aaLen = v.protein ? v.protein.replace('*', '').length : 0;
+    SEQ.cdna = v.cdna;
+    SEQ.cds = v.cds_start ? v.cdna.slice(v.cds_start - 1, v.cds_end) : '';
+    SEQ.protein = v.protein ? v.protein.replace('*', '') : '';
+
+    // download buttons keep the same query (gene / transcript / assembly / variant)
+    const dq = new URLSearchParams(Q.toString());
+    if (!dq.get('transcript')) dq.set('transcript', v.transcript_id);
+
+    let variant = '';
+    if (d.location) {
+        const rows = d.location.rows.map(x => `<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td></tr>`).join('');
+        const warn = (d.location.warnings || []).map(w => `<div class="note">⚠️ ${esc(w)}</div>`).join('');
+        const fr = d.location.franklin_url ? `<a class="fr" href="${esc(d.location.franklin_url)}" target="_blank" rel="noopener">Check in Franklin ↗</a>` : '';
+        variant = `<div class="var"><strong>Your variant</strong> ${fr}<table><tbody>${rows}</tbody></table>${warn}</div>`;
+    }
+
+    const note = v.source_note ? `<div class="note">⚠️ ${esc(v.source_note)}</div>` : '';
+    const hit = new Set();
+    if (d.location && v.variants && v.variants.length) {
+        const m = v.variants[0];
+        const lo = m.i, hi = (m.to === undefined || m.to === null) ? m.i : m.to;
+        v.exons.forEach(e => { if (e.end - 1 >= lo && e.start - 1 <= hi) hit.add('Exon ' + e.n); });
+    }
+
+    app.innerHTML = `
+        <div class="top">
+            <div style="font-size:22px; font-weight:bold; color:#4B2C7F;">${esc(ensId)}
+                <span style="font-size:16px; color:#333;">${esc(v.gene_name || '')}</span>
+                <span class="badge" style="background:#8e44ad;">${esc(asmTxt)}</span>
+                ${mane ? `<span class="badge" style="background:#27ae60;">${mane}</span>` : ''}</div>
+            <div style="margin-top:6px;"><strong>RefSeq:</strong> ${rsIds.length ? esc(rsIds.join(', ')) : (rs ? 'none linked' : esc(v.transcript_id + '.' + v.version))}
+                ${rsProt.length ? ' &middot; <strong>protein</strong> ' + esc(rsProt.join(', ')) : ''}
+                ${v.protein_id ? ' &middot; <strong>Ensembl protein</strong> ' + esc(v.protein_id) : ''}</div>
+            <div class="muted" style="margin-top:4px;">${v.exon_count} exons &middot; ${v.intron_count} introns &middot; cDNA ${v.cdna.length.toLocaleString()} bp
+                ${v.cds_start ? ` &middot; CDS ${v.cds_start}–${v.cds_end} (${(v.cds_end - v.cds_start + 1).toLocaleString()} bp) &middot; protein ${aaLen} aa` : ' &middot; non-coding transcript'}
+                &middot; source: ${esc(v.source || '')}</div>
+            ${note}
+            <div style="margin-top:10px;">
+                <button onclick="window.location.href='/api/export-cdna?format=excel&' + '${esc(dq.toString())}'">📊 Excel</button>
+                <button class="word" onclick="window.location.href='/api/export-cdna?format=word&' + '${esc(dq.toString())}'">📝 Word</button>
+                <label class="muted"><input type="checkbox" id="aligned" onchange="drawLeft()"> show the protein under the cDNA</label>
+            </div>
+        </div>
+        ${variant}
+        <div class="grid">
+            <div class="pane" id="left"></div>
+            <div class="pane"><h3>Exon / intron sequences</h3>
+                <div class="muted">Exons in capitals, introns in lower case (long introns are shortened; use the button under them for the full sequence). ${hit.size ? 'The exon(s) with your variant are outlined in red.' : ''}
+                ${d.intron_note ? '<br>' + esc(d.intron_note) : ''}</div>
+                ${renderElements(d.elements, hit)}</div>
+        </div>`;
+    window._view = v;
+    drawLeft();
+}
+
+function drawLeft() {
+    const v = window._view, aligned = document.getElementById('aligned').checked;
+    const btn = (label, key) => `<button style="padding:4px 10px; font-size:12px; background:#7f8c8d;" onclick="copyText(SEQ.${key}, this)">Copy ${label}</button>`;
+    document.getElementById('left').innerHTML = `
+        <h3>cDNA &middot; CDS &middot; protein</h3>
+        <div class="legend muted" style="margin-top:6px;">
+            <span style="background:#fff;border:1px solid #ddd;">codon</span><span style="background:#fff8b3;">codon</span>
+            <span style="background:#ffdd33;">UTR</span><span style="color:#000;">exon</span><span style="color:#1f3fff;">next exon</span>
+            ${(v.variants && v.variants.length) ? '<span style="color:#e74c3c;font-weight:bold;text-decoration:underline;">your variant</span>' : ''}</div>
+        <h4>cDNA ${btn('cDNA', 'cdna')}</h4>${renderCdnaBlock(v, aligned)}
+        <h4>CDS ${v.cds_start ? btn('CDS', 'cds') : ''}</h4>${renderCdsBlock(v)}
+        <h4>Protein (amino acids) ${v.protein ? btn('protein', 'protein') : ''}</h4>${renderProteinBlock(v)}`;
+}
+init();
+</script>
+</body>
+</html>

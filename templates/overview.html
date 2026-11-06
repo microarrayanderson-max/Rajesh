@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gene overview</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 30px; background: #f8f9fa; color: #333; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 15px 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .header a { color: #4B2C7F; text-decoration: none; font-weight: bold; margin-left: 18px; }
+        .search-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+        input[type="text"] { flex: 1; max-width: 360px; padding: 11px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; text-transform: uppercase; }
+        button { padding: 12px 24px; font-size: 15px; background: #4B2C7F; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #3b2263; }
+        button:disabled { background: #b9b0c9; cursor: not-allowed; }
+        .card { background: #fff; padding: 20px 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 5px solid #4B2C7F; }
+        .card h3 { margin: 0 0 12px 0; color: #4B2C7F; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; color: #fff; font-weight: bold; font-size: 14px; margin-right: 8px; }
+        .b-coding { background: #27ae60; } .b-noncoding { background: #8e44ad; } .b-pseudogene { background: #e67e22; } .b-other { background: #7f8c8d; }
+        .b-AD { background: #2980b9; } .b-AR { background: #c0392b; } .b-XLR, .b-XLD, .b-XL { background: #8e44ad; } .b-grey { background: #7f8c8d; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 14px; vertical-align: top; }
+        th { background: #f4f4f4; }
+        .muted { color: #7f8c8d; font-size: 13px; }
+        .err { color: #c0392b; font-weight: bold; }
+        .note { background: #fff4e5; border-left: 4px solid #e67e22; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
+        .linkbtn { display: inline-block; padding: 8px 16px; background: #fff; color: #4B2C7F; border: 2px solid #4B2C7F; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 14px; margin: 6px 8px 0 0; }
+        .linkbtn:hover { background: #f1ecf7; }
+        .proceed { text-align: center; margin: 25px 0; }
+        .proceed button { font-size: 18px; padding: 16px 36px; background: #27ae60; }
+        .proceed button:hover { background: #219150; }
+        .proceed button:disabled { background: #a5d6b7; }
+        .spin { color: #7f8c8d; font-style: italic; }
+        .okbox { background: #eafaf1; border-left: 4px solid #27ae60; padding: 12px 16px; border-radius: 4px; font-size: 15px; }
+        .classbox { margin-top: 16px; padding: 14px 16px; background: #f7f4fb; border-radius: 6px; }
+        .crow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+        .crow select { padding: 11px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; background: #fff; }
+        .result { margin-top: 12px; padding-top: 12px; border-top: 2px solid #4B2C7F; }
+        details summary { outline: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2 style="margin:0; color:#4B2C7F;">🧬 Gene overview</h2>
+        <div><a href="/classic">Classic tools</a><a href="/logout" style="color:#c0392b;">Sign Out</a></div>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="geneInput" placeholder="Gene symbol, e.g. DMD">
+        <button onclick="runGene()">Check gene</button>
+        <span class="muted">Gene type &middot; UCSC pseudogenes &middot; OMIM phenotypes &middot; pathogenicity</span>
+    </div>
+
+    <div id="cards" style="display:none;">
+        <div class="card" id="cardType"><h3>1 &middot; Gene type</h3><div class="body"></div></div>
+        <div class="card" id="cardPseudo"><h3>2 &middot; Pseudogenes (UCSC Genome Browser)</h3><div class="body"></div></div>
+        <div class="card" id="cardOmim"><h3>3 &middot; Disease, inheritance and phenotype (OMIM)</h3><div class="body"></div></div>
+        <div class="card" id="cardPatho"><h3>4 &middot; Pathogenicity (Franklin / ClinVar)</h3><div class="body"></div></div>
+        <div class="proceed">
+            <button id="proceedBtn" disabled onclick="proceed()">Proceed with Ensembl &nbsp;↗</button>
+            <div class="muted" style="margin-top:8px;">Opens in a new tab: choose the old or current Ensembl site, the Ensembl or RefSeq ID, and locate a position.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentGene = "";
+
+function body(id) { return document.querySelector('#' + id + ' .body'); }
+function spin(id, text) { body(id).innerHTML = `<span class="spin">${text}</span>`; }
+function showErr(id, msg) { body(id).innerHTML = `<span class="err">⚠️ ${esc(msg)}</span>`; }
+function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+async function getJson(url) { const r = await fetch(url); return r.json(); }
+
+function runGene() {
+    const gene = document.getElementById('geneInput').value.trim().toUpperCase();
+    if (!gene) return alert("Please enter a gene symbol.");
+    currentGene = gene;
+    document.getElementById('cards').style.display = 'block';
+    document.getElementById('proceedBtn').disabled = true;
+    spin('cardType', 'Checking Ensembl...');
+    spin('cardPseudo', 'Searching UCSC for pseudogenes (about one request per second, this can take up to half a minute)...');
+    spin('cardOmim', 'Asking OMIM...');
+    spin('cardPatho', 'Checking ClinVar...');
+    const q = '?gene=' + encodeURIComponent(gene);
+    loadType(q); loadPseudo(q); loadOmim(q); loadPatho(q);
+}
+
+async function loadType(q) {
+    try {
+        const d = await getJson('/api/gene/biotype' + q);
+        if (d.error) return showErr('cardType', d.error);
+        currentGene = d.gene || currentGene;
+        const loc = d.chrom ? `chr${d.chrom}:${Number(d.start).toLocaleString()}-${Number(d.end).toLocaleString()} (${d.strand === 1 ? '+' : '−'} strand, ${d.assembly})` : '';
+        body('cardType').innerHTML = `
+            <span class="badge b-${d.kind}">${esc(d.label)}</span>
+            <span class="muted">Ensembl biotype: <strong>${esc(d.biotype)}</strong></span>
+            <p style="margin:10px 0 4px 0;"><strong>${esc(d.gene)}</strong> &ndash; ${esc(d.description || 'no description')}</p>
+            <div class="muted">${esc(loc)}</div>
+            <div class="muted">Ensembl gene: <a href="https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${encodeURIComponent(d.ensembl_id)}" target="_blank" rel="noopener">${esc(d.ensembl_id)}${d.version ? '.' + esc(d.version) : ''}</a>
+            ${d.canonical_transcript ? ' &middot; canonical transcript ' + esc(d.canonical_transcript) : ''}</div>`;
+        document.getElementById('proceedBtn').disabled = false;
+    } catch (e) { showErr('cardType', 'Could not complete the lookup.'); }
+}
+
+async function loadPseudo(q) {
+    try {
+        const d = await getJson('/api/gene/pseudogenes' + q);
+        if (d.error) return showErr('cardPseudo', d.error);
+        const n = d.pseudogenes.length;
+        let html;
+        if (!n) {
+            html = `<div class="okbox"><span class="badge b-coding">No pseudogene</span> <strong>${esc(d.gene)}</strong> has no pseudogene
+                <div class="muted" style="margin-top:6px;">No pseudogene named ${esc(d.gene)}P1, ${esc(d.gene)}P2 &hellip; was found in UCSC (searched ${esc(d.searched)}).</div></div>
+                <div class="muted" style="margin-top:8px;">Unnamed retrocopies are not found by name. For an extra check you can
+                <a href="${esc(d.ucsc_gene_link)}" target="_blank" rel="noopener">open ${esc(d.gene)} in the UCSC Genome Browser ↗</a>
+                and switch on the &lsquo;Retroposed Genes&rsquo; track.</div>`;
+        } else {
+            html = `<div style="font-size:18px;"><span class="badge b-pseudogene">${n} pseudogene${n > 1 ? 's' : ''}</span> <strong>${esc(d.gene)}</strong> has ${n > 1 ? 'pseudogenes' : 'a pseudogene'}:
+                    ${d.pseudogenes.map(p => `<strong>${esc(p.symbol)}</strong>`).join(', ')}</div>
+                <div style="margin:12px 0 4px 0;"><button style="background:#e67e22;" onclick="openPseudo('${esc(d.gene)}')">Open the pseudogene details &nbsp;↗ (new tab)</button></div>
+                <table><thead><tr><th>Pseudogene</th><th>Position (${esc(d.genome)})</th><th>UCSC track</th><th>Class</th><th>Open</th></tr></thead><tbody>` +
+                d.pseudogenes.map(p => `<tr><td><strong>${esc(p.symbol)}</strong></td><td>${esc(p.position)}</td><td>${esc((p.tracks || []).join(', '))}</td><td>${esc(p.class || '')}</td>
+                    <td><a class="linkbtn" style="margin:0;" href="${esc(p.ucsc_link)}" target="_blank" rel="noopener">Open ${esc(p.symbol)} in UCSC ↗</a></td></tr>`).join('') + '</tbody></table>';
+        }
+        html += `<details style="margin-top:10px;"><summary class="muted" style="cursor:pointer;">How this was checked</summary><div class="note">${esc(d.note)}</div></details>`;
+        body('cardPseudo').innerHTML = html;
+    } catch (e) { showErr('cardPseudo', 'Could not complete the UCSC lookup.'); }
+}
+
+function openPseudo(gene) {
+    window.open('/pseudogenes?gene=' + encodeURIComponent(gene), '_blank');
+}
+
+function inhBadge(abbr) {
+    const cls = ['AD', 'AR', 'XLR', 'XLD', 'XL'].includes(abbr) ? abbr : 'grey';
+    return `<span class="badge b-${cls}" title="${esc(abbr)}">${esc(abbr)}</span>`;
+}
+
+async function loadOmim(q) {
+    try {
+        const d = await getJson('/api/gene/omim' + q);
+        if (d.error) return showErr('cardOmim', d.error);
+        if (!d.configured) {
+            body('cardOmim').innerHTML = `<div class="note">OMIM can only be queried with a free API key.
+                Request one at <a href="https://www.omim.org/api" target="_blank" rel="noopener">omim.org/api</a>, save it as a text file named
+                <strong>omim_api_key.txt</strong> in the same folder as <strong>app.py</strong> (or set the environment variable <strong>OMIM_API_KEY</strong>), and restart the portal.
+                Please check OMIM's terms of use for diagnostic-laboratory use.</div>
+                <a class="linkbtn" href="${esc(d.search_link)}" target="_blank" rel="noopener">Search ${esc(d.gene)} on OMIM ↗</a>`;
+            return;
+        }
+        const ge = d.gene_entry;
+        if (!ge || !d.phenotypes.length) {
+            body('cardOmim').innerHTML = `<span class="badge b-grey">No phenotype</span> OMIM lists no disease phenotype for <strong>${esc(d.gene)}</strong>.
+                <div><a class="linkbtn" href="${esc(ge ? ge.link : d.search_link)}" target="_blank" rel="noopener">Open on OMIM ↗</a></div>`;
+            return;
+        }
+        const counts = Object.entries(d.inheritance_counts).map(([k, v]) => `${inhBadge(k)}<span class="muted">× ${v}</span> &nbsp;`).join('');
+        body('cardOmim').innerHTML = `
+            <div><strong>${esc(ge.name || d.gene)}</strong> &middot; <a href="${esc(ge.link)}" target="_blank" rel="noopener">OMIM ${esc(ge.mim)} ↗</a> &middot; <span class="muted">${esc(ge.cyto || '')}</span></div>
+            <div style="margin-top:8px;">Inheritance: ${counts || '<span class="muted">not stated</span>'}</div>
+            <table><thead><tr><th>Phenotype</th><th>Phenotype MIM</th><th>Inheritance</th><th>Mapping key</th></tr></thead><tbody>` +
+            d.phenotypes.map(p => `<tr><td>${esc(p.phenotype)}</td>
+                <td>${p.mim ? `<a href="https://www.omim.org/entry/${esc(p.mim)}" target="_blank" rel="noopener">${esc(p.mim)}</a>` : ''}</td>
+                <td>${p.inheritance.length ? p.inheritance.map(i => inhBadge(i.abbr) + `<span class="muted">${esc(i.text)}</span>`).join('<br>') : '<span class="muted">not stated</span>'}</td>
+                <td>${esc(p.mapping_key || '')}</td></tr>`).join('') + '</tbody></table>' +
+            `<div class="muted" style="margin-top:8px;">AD = autosomal dominant, AR = autosomal recessive, XLR / XLD / XL = X-linked recessive / dominant / unspecified. Mapping key 3 = molecular basis known.</div>`;
+    } catch (e) { showErr('cardOmim', 'Could not complete the OMIM lookup.'); }
+}
+
+async function loadPatho(q) {
+    try {
+        const d = await getJson('/api/gene/pathogenicity' + q);
+        if (d.error) return showErr('cardPatho', d.error);
+        let cv = '<span class="muted">ClinVar counts are not available right now.</span>';
+        if (d.clinvar) {
+            const c = d.clinvar, f = x => Number(x).toLocaleString();
+            cv = `<span class="badge b-AR">${f(c.pathogenic)} pathogenic</span><span class="badge b-pseudogene">${f(c.likely_pathogenic)} likely pathogenic</span>
+                  <span class="muted">out of ${f(c.total)} ClinVar records for ${esc(d.gene)}</span>`;
+        }
+        body('cardPatho').innerHTML = `
+            <div>${cv}</div>
+            <div class="classbox">
+                <strong>Classify a variant</strong> <span class="muted">&mdash; enter the gene and the change, as you would in Franklin</span>
+                <div class="crow">
+                    <input type="text" id="clGene" value="${esc(d.gene)}" placeholder="Gene" style="width:130px;">
+                    <input type="text" id="clVar" placeholder="c.283C>T   or   c.283_285del   or   c.283dup" style="width:320px; text-transform:none;">
+                    <select id="clAsm"><option value="GRCh38">GRCh38 (current)</option><option value="GRCh37">GRCh37 (old)</option></select>
+                    <button onclick="classifyVariant()">Classify</button>
+                </div>
+                <div id="classifyOut"></div>
+            </div>
+            <div><a class="linkbtn" href="${esc(d.franklin_link)}" target="_blank" rel="noopener">Open Franklin (Genoox) ↗</a>
+                 <a class="linkbtn" href="${esc(d.clinvar_link)}" target="_blank" rel="noopener">Open ClinVar ↗</a></div>
+            <div class="muted" style="margin-top:6px;">Franklin has no public lookup service, so it opens in its own tab. The classification above is computed by this portal from public data.</div>`;
+        ['clGene', 'clVar'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') classifyVariant(); }));
+    } catch (e) { showErr('cardPatho', 'Could not complete the lookup.'); }
+}
+
+const CLASS_COLOR = { 'Pathogenic': ['#c0392b', '#fff'], 'Likely pathogenic': ['#e67e22', '#fff'],
+    'Uncertain significance (VUS)': ['#f4d03f', '#333'], 'Likely benign': ['#7dcea0', '#333'], 'Benign': ['#27ae60', '#fff'] };
+
+async function classifyVariant() {
+    const gene = document.getElementById('clGene').value.trim(), variant = document.getElementById('clVar').value.trim();
+    const out = document.getElementById('classifyOut');
+    if (!variant) return alert('Please enter the change, for example c.283C>T');
+    out.innerHTML = '<div class="spin" style="margin-top:10px;">Placing the variant and collecting evidence (gnomAD, Ensembl VEP, ClinVar)...</div>';
+    try {
+        const qs = new URLSearchParams({ gene, variant, assembly: document.getElementById('clAsm').value });
+        const d = await getJson('/api/classify?' + qs.toString());
+        if (d.error) { out.innerHTML = `<div class="err" style="margin-top:10px;">⚠️ ${esc(d.error)}</div>`; return; }
+        out.innerHTML = renderClassification(d);
+    } catch (e) { out.innerHTML = '<div class="err" style="margin-top:10px;">⚠️ The classification could not be completed.</div>'; }
+}
+
+function renderClassification(d) {
+    const col = CLASS_COLOR[d.classification] || ['#7f8c8d', '#fff'];
+    const tx = d.transcript, ensId = tx.id + (tx.version ? '.' + tx.version : '');
+    const met = d.criteria.filter(c => c.met), notMet = d.criteria.filter(c => !c.met);
+    const pts = n => (n > 0 ? '+' : '') + n;
+    const stars = n => '★'.repeat(n) + '☆'.repeat(Math.max(0, 4 - n));
+    const ev = d.evidence || {};
+
+    const metRows = met.length ? met.map(c => `<tr><td><strong>${esc(c.code)}</strong></td><td>${esc(c.strength)}</td>
+        <td style="font-weight:bold; color:${c.points > 0 ? '#c0392b' : '#27ae60'};">${pts(c.points)}</td><td>${esc(c.evidence)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">No criterion could be applied from the public data that was available.</td></tr>';
+
+    let g = '<span class="muted">not queried</span>';
+    if (ev.gnomad) {
+        if (ev.gnomad.status === 'absent') g = `Not found in gnomAD (${esc(ev.gnomad.dataset)}, ID ${esc(ev.gnomad.variant_id)})`;
+        else if (ev.gnomad.status === 'present') g = `Allele frequency ${Number(ev.gnomad.af).toExponential(2)} (allele count ${ev.gnomad.ac} of ${ev.gnomad.an}; ${ev.gnomad.hom} homozygotes) &middot; ${esc(ev.gnomad.dataset)}`;
+        else g = `<span class="err">${esc(ev.gnomad.error || 'unavailable')}</span>`;
+    }
+    const vp = ev.vep;
+    const pred = vp ? `SIFT: ${esc(vp.sift || 'n/a')}${vp.sift_score != null ? ' (' + vp.sift_score + ')' : ''} &middot; PolyPhen: ${esc(vp.polyphen || 'n/a')}${vp.polyphen_score != null ? ' (' + vp.polyphen_score + ')' : ''}${vp.cadd != null ? ' &middot; CADD ' + vp.cadd : ''}${vp.revel != null ? ' &middot; REVEL ' + vp.revel : ''}${vp.rsid ? ' &middot; ' + esc(vp.rsid) : ''}`
+                    : '<span class="muted">not available (single-base changes only)</span>';
+    const con = ev.constraint;
+    const cons = con ? `pLI ${con.pli != null ? Number(con.pli).toFixed(2) : 'n/a'} &middot; LOEUF ${con.loeuf != null ? Number(con.loeuf).toFixed(2) : 'n/a'} &middot; missense z ${con.mis_z != null ? Number(con.mis_z).toFixed(2) : 'n/a'}` : '<span class="muted">not available</span>';
+    const cvr = d.clinvar;
+    const cvTxt = cvr ? `<strong>${esc(cvr.classification || 'n/a')}</strong> &middot; <span title="${esc(cvr.review)}">${stars(cvr.stars)}</span> ${esc(cvr.review)}
+        ${cvr.conditions.length ? '<br>' + esc(cvr.conditions.join('; ')) : ''}${cvr.last_evaluated ? '<br><span class="muted">last evaluated ' + esc(cvr.last_evaluated) + '</span>' : ''}
+        <br><a href="${esc(cvr.link)}" target="_blank" rel="noopener">ClinVar record ↗</a>`
+        : (d.clinvar_error ? `<span class="err">${esc(d.clinvar_error)}</span>` : '<span class="muted">No matching ClinVar record was found (or the lookup was not possible for this notation).</span>');
+    let differ = '';
+    if (cvr && cvr.classification) {
+        const cvP = /pathogenic/i.test(cvr.classification) && !/conflict|uncertain|benign/i.test(cvr.classification), myP = /pathogenic/i.test(d.classification);
+        const cvB = /benign/i.test(cvr.classification) && !/conflict|uncertain|pathogenic/i.test(cvr.classification), myB = /benign/i.test(d.classification);
+        if ((cvP && !myP) || (cvB && !myB) || (myP && !cvP) || (myB && !cvB))
+            differ = `<div class="note">ClinVar reports <strong>${esc(cvr.classification)}</strong>, which differs from the computed result. The computed result uses only the public evidence listed above; ClinVar reflects expert and laboratory review.</div>`;
+    }
+    const loc = d.location.map(r => `<tr><td style="width:190px; background:#f4f4f4; font-weight:bold;">${esc(r[0])}</td><td style="word-break:break-all;">${esc(r[1])}</td></tr>`).join('');
+    const vcf = d.vcf ? `${esc(d.vcf.chrom)}:${d.vcf.pos} ${esc(d.vcf.ref)}&gt;${esc(d.vcf.alt)} (${esc(d.assembly)})` : 'not available';
+    const links = [d.links.franklin ? `<a class="linkbtn" href="${esc(d.links.franklin)}" target="_blank" rel="noopener">Check this variant in Franklin ↗</a>` : '',
+                   d.links.gnomad ? `<a class="linkbtn" href="${esc(d.links.gnomad)}" target="_blank" rel="noopener">gnomAD ↗</a>` : '',
+                   d.links.clinvar_rs ? `<a class="linkbtn" href="${esc(d.links.clinvar_rs)}" target="_blank" rel="noopener">ClinVar (by rs number) ↗</a>` : ''].join('');
+
+    return `<div class="result">
+        <div><span class="badge" style="background:${col[0]}; color:${col[1]}; font-size:17px; padding:6px 16px;">${esc(d.classification)}</span>
+            <strong>${d.points} points</strong>
+            <span class="muted">ACMG/AMP points: 10 or more Pathogenic &middot; 6&ndash;9 Likely pathogenic &middot; 0&ndash;5 VUS &middot; &minus;1 to &minus;6 Likely benign &middot; &minus;7 or less Benign (BA1 alone = Benign)</span></div>
+        <div style="margin:8px 0;"><strong>${esc(d.gene)}</strong> ${esc(ensId)}${tx.refseq.length ? ' &middot; ' + esc(tx.refseq.join(', ')) : ''} &middot; <strong>${esc(d.hgvs)}</strong>${d.protein_change ? ' &middot; ' + esc(d.protein_change) : ''}
+            <span class="muted"> &middot; ${esc((d.kind || '').replace(/_/g, ' '))}</span></div>
+        <h4 style="margin:12px 0 4px 0;">Evidence applied</h4>
+        <table><thead><tr><th>Criterion</th><th>Strength</th><th>Points</th><th>Evidence</th></tr></thead><tbody>${metRows}</tbody></table>
+        <details><summary class="muted" style="cursor:pointer; margin-top:8px;">Criteria checked but not met (${notMet.length})</summary>
+            <table><tbody>${notMet.map(c => `<tr><td style="width:80px;"><strong>${esc(c.code)}</strong></td><td>${esc(c.evidence)}</td></tr>`).join('')}</tbody></table></details>
+        <details><summary class="muted" style="cursor:pointer; margin-top:6px;">Not assessed: needs case or laboratory data (${d.not_assessed.length})</summary>
+            <table><tbody>${d.not_assessed.map(c => `<tr><td style="width:130px;"><strong>${esc(c.code)}</strong></td><td>${esc(c.what)}</td></tr>`).join('')}</tbody></table></details>
+        <h4 style="margin:14px 0 4px 0;">Evidence found</h4>
+        <table><tbody>
+            <tr><td style="width:190px; background:#f4f4f4; font-weight:bold;">Genomic position</td><td>${vcf}</td></tr>
+            <tr><td style="background:#f4f4f4; font-weight:bold;">Population frequency</td><td>${g}</td></tr>
+            <tr><td style="background:#f4f4f4; font-weight:bold;">Prediction (Ensembl VEP)</td><td>${pred}</td></tr>
+            <tr><td style="background:#f4f4f4; font-weight:bold;">Gene constraint (gnomAD)</td><td>${cons}</td></tr>
+            <tr><td style="background:#f4f4f4; font-weight:bold;">ClinVar (for comparison; not counted)</td><td>${cvTxt}</td></tr>
+        </tbody></table>${differ}
+        <details><summary class="muted" style="cursor:pointer; margin-top:8px;">Where the variant lies in the transcript</summary><table><tbody>${loc}</tbody></table></details>
+        ${(d.warnings || []).map(w => `<div class="note">⚠️ ${esc(w)}</div>`).join('')}
+        <div style="margin-top:8px;">${links}</div>
+        <div class="note"><strong>Please note:</strong> this classification is computed by the portal from public data using the ACMG/AMP points system. Only the criteria listed above can be judged without patient or laboratory data,
+            so most variants come out as VUS unless the evidence is strong. Franklin&rsquo;s own algorithm is different and its result can differ. This is not a clinical report; a qualified clinical geneticist must review and confirm any classification.</div>
+    </div>`;
+}
+
+function proceed() {
+    window.open('/ensembl?gene=' + encodeURIComponent(currentGene), '_blank');
+}
+document.getElementById('geneInput').addEventListener('keydown', e => { if (e.key === 'Enter') runGene(); });
+</script>
+</body>
+</html>

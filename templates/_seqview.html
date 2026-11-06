@@ -1,0 +1,169 @@
+<style>
+    .seqpre { font-family: "Courier New", Courier, monospace; font-size: 13px; line-height: 1.4; margin: 6px 0 12px 0; white-space: pre; overflow-x: auto; }
+    .seqpre .num { color: #7f8c8d; }
+    .seqpre .aa { color: #b03a2e; font-weight: bold; }
+    .seqpre .aahl { background: #ffd6d6; color: #b03a2e; font-weight: bold; }
+    .seqpre .ex { color: #003366; font-weight: bold; }
+    .seqpre .int { color: #7f8c8d; }
+    .muted { color: #7f8c8d; font-size: 12px; }
+    .el { border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; background: #fff; }
+    .el.hit { background: #fff1ef; border-color: #e74c3c; }
+    .el-head { margin-bottom: 4px; font-size: 13px; }
+    .mini { padding: 4px 10px; font-size: 12px; background: #7f8c8d; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: normal; }
+    .legend span { display: inline-block; padding: 2px 8px; margin-right: 8px; border-radius: 3px; font-size: 12px; }
+</style>
+<script>
+function esc(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// colour (font) of the changed bases, by consequence
+const VAR_STYLE = {
+    stop_gained: ['#ff0000', 'Stop gained'], frameshift: ['#9400d3', 'Frameshift'],
+    start_lost: ['#e6a800', 'Start lost'], stop_lost: ['#ff0000', 'Stop lost'],
+    inframe_deletion: ['#ff4fa3', 'Inframe deletion'], inframe_insertion: ['#ff4fa3', 'Inframe insertion'],
+    protein_altering: ['#ff0080', 'Protein altering'], missense: ['#e6a800', 'Missense'],
+    synonymous: ['#4cae00', 'Synonymous'], '5utr': ['#2a9fb3', '5 prime UTR'], '3utr': ['#2a9fb3', '3 prime UTR'],
+    noncoding: ['#78909c', 'Non-coding exon'], query: ['#e74c3c', 'Your variant']
+};
+
+function seqCtx(d) {
+    const n = d.cdna.length;
+    const ctx = { d: d, n: n, cds0: d.cds_start ? d.cds_start - 1 : -1, cds1: d.cds_end ? d.cds_end - 1 : -1,
+                  exonOf: new Array(n).fill(0), mk: {} };
+    d.exons.forEach(e => { for (let i = e.start - 1; i < e.end && i < n; i++) ctx.exonOf[i] = e.n; });
+    (d.variants || []).forEach(m => {
+        const to = (m.to === undefined || m.to === null) ? m.i : m.to;
+        for (let i = m.i; i <= to; i++) ctx.mk[i] = m;
+    });
+    ctx.coding = i => ctx.cds0 >= 0 && i >= ctx.cds0 && i <= ctx.cds1;
+    return ctx;
+}
+
+function cdnaStyle(ctx, i) {
+    const color = (ctx.exonOf[i] % 2) ? '#000' : '#1f3fff';      // exons alternate black / blue
+    let bg = '';
+    if (ctx.coding(i)) bg = (Math.floor((i - ctx.cds0) / 3) % 2) ? '#fff8b3' : '#fff';   // codons alternate
+    else if (ctx.cds0 >= 0) bg = '#ffdd33';                                                // UTR
+    const m = ctx.mk[i];
+    if (m) {
+        const c = (VAR_STYLE[m.cls] || VAR_STYLE.query)[0];
+        return `color:${c};font-weight:bold;text-decoration:underline;outline:1px solid ${c};` + (bg ? `background:${bg};` : '');
+    }
+    return `color:${color};` + (bg ? `background:${bg};` : '');
+}
+
+function padNum(v, w) { return String(v === null || v === undefined ? '' : v).padStart(w, ' '); }
+
+// cDNA, 60 bases per line; optionally with the amino acid under the middle base of each codon
+function renderCdnaBlock(d, aligned) {
+    const ctx = seqCtx(d), seq = d.cdna, n = ctx.n, W = 60;
+    const aaAt = i => {
+        if (ctx.cds0 < 0) return ' ';
+        if (!ctx.coding(i)) return '.';
+        const rel = i - ctx.cds0;
+        if (rel % 3 !== 1) return '-';
+        return d.protein[Math.floor(rel / 3)] || '-';
+    };
+    let html = '';
+    for (let s = 0; s < n; s += W) {
+        const e = Math.min(s + W, n);
+        let run = '', runSt = null, line = '';
+        for (let i = s; i < e; i++) {
+            const st = cdnaStyle(ctx, i);
+            if (st !== runSt && runSt !== null) { line += `<span style="${runSt}">${run}</span>`; run = ''; }
+            runSt = st; run += seq[i];
+        }
+        line += `<span style="${runSt}">${run}</span>`;
+        const fill = ' '.repeat(W - (e - s));
+        html += `<span class="num">${padNum(s + 1, 7)}</span> ${line}${fill} <span class="num">${e}</span>\n`;
+        if (aligned) {
+            let p = '', aaL = null, aaR = null;
+            for (let i = s; i < e; i++) {
+                const a = aaAt(i);
+                p += /[A-Z*]/.test(a) ? `<span class="aa">${a}</span>` : a;
+                if (ctx.coding(i)) { const v = Math.floor((i - ctx.cds0) / 3) + 1; if (aaL === null) aaL = v; aaR = v; }
+            }
+            html += `<span class="num">${padNum(aaL, 7)}</span> ${p}${fill} <span class="num">${aaR === null ? '' : aaR}</span>\n\n`;
+        }
+    }
+    return `<pre class="seqpre">${html}</pre>`;
+}
+
+// CDS only, 60 bases per line, written as codons
+function renderCdsBlock(d) {
+    const ctx = seqCtx(d);
+    if (ctx.cds0 < 0) return '<div class="muted">Non-coding transcript: there is no coding sequence.</div>';
+    const cds = d.cdna.slice(ctx.cds0, ctx.cds1 + 1);
+    let html = '';
+    for (let s = 0; s < cds.length; s += 60) {
+        const chunk = cds.slice(s, s + 60);
+        let line = '';
+        for (let j = 0; j < chunk.length; j++) {
+            if (j > 0 && j % 3 === 0) line += ' ';
+            const m = ctx.mk[ctx.cds0 + s + j];
+            line += m ? `<span style="color:${(VAR_STYLE[m.cls] || VAR_STYLE.query)[0]};font-weight:bold;text-decoration:underline;">${chunk[j]}</span>` : chunk[j];
+        }
+        html += `<span class="num">${padNum(s + 1, 7)}</span> ${line} <span class="num">${Math.min(s + 60, cds.length)}</span>\n`;
+    }
+    return `<pre class="seqpre">${html}</pre>`;
+}
+
+// protein (one-letter code), 60 amino acids per line in groups of 10
+function renderProteinBlock(d) {
+    if (!d.protein) return '<div class="muted">Non-coding transcript: there is no protein.</div>';
+    const p = d.protein, hl = d.prot_hl;
+    let html = '';
+    for (let s = 0; s < p.length; s += 60) {
+        let line = '';
+        for (let j = 0; j < 60 && s + j < p.length; j++) {
+            if (j > 0 && j % 10 === 0) line += ' ';
+            const idx = s + j + 1;
+            line += (hl && idx >= hl[0] && idx <= hl[1]) ? `<span class="aahl">${p[s + j]}</span>` : p[s + j];
+        }
+        html += `<span class="num">${padNum(s + 1, 7)}</span> ${line} <span class="num">${Math.min(s + 60, p.length)}</span>\n`;
+    }
+    return `<pre class="seqpre">${html}</pre>`;
+}
+
+function seqLines(seq, cls, offset) {
+    let h = '';
+    for (let i = 0; i < seq.length; i += 60) h += `<span class="num">${padNum((offset || 0) + i + 1, 7)}</span> <span class="${cls}">${seq.slice(i, i + 60)}</span>\n`;
+    return h;
+}
+
+// every exon and intron with its sequence (long introns are shortened until you ask for them)
+function renderElements(elements, hit) {
+    window._fullSeq = window._fullSeq || {};
+    return elements.map((r, idx) => {
+        const isEx = r.type.startsWith('Exon');
+        const meta = [
+            r.cstart != null ? `cDNA ${r.cstart}–${r.cend}` : null,
+            r.gstart != null ? `genomic ${r.gstart}–${r.gend}` : null,
+            Number.isInteger(r.length) ? `${r.length.toLocaleString()} bp` : null,
+            (isEx && r.sphase !== '' && r.sphase !== undefined) ? `phase ${r.sphase}/${r.ephase}` : null
+        ].filter(Boolean).join(' · ');
+        const seq = r.sequence || '';
+        let body;
+        if (!seq) body = '<div class="muted">sequence not available</div>';
+        else if (!isEx && seq.length > 400) {
+            window._fullSeq[idx] = seq;
+            body = `<pre class="seqpre" id="el${idx}">${seqLines(seq.slice(0, 120), 'int', 0)}        ... ${(seq.length - 240).toLocaleString()} bp not shown ...\n${seqLines(seq.slice(-120), 'int', seq.length - 120)}</pre>` +
+                   `<button class="mini" onclick="showFullEl(${idx})">Show the full intron sequence</button>`;
+        } else body = `<pre class="seqpre">${seqLines(seq, isEx ? 'ex' : 'int', 0)}</pre>`;
+        const hitCls = hit && hit.has(r.type) ? ' hit' : '';
+        return `<div class="el${hitCls}"><div class="el-head"><strong>${esc(r.type)}</strong> <span class="muted">${esc(r.id)}</span><br><span class="muted">${meta}</span></div>${body}</div>`;
+    }).join('');
+}
+
+function showFullEl(idx) {
+    const el = document.getElementById('el' + idx);
+    el.innerHTML = seqLines(window._fullSeq[idx], 'int', 0);
+    if (el.nextElementSibling) el.nextElementSibling.remove();
+}
+
+function copyText(text, btn) {
+    const done = () => { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = t; }, 1200); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done);
+}
+</script>
